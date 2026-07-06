@@ -436,7 +436,7 @@
     const r = record.results;
     const deg = Math.round((r.overall / 100) * 360);
     $("#score-dial").style.background =
-      "conic-gradient(var(--teal) 0deg " + deg + "deg, var(--line) " + deg + "deg 360deg)";
+      "conic-gradient(var(--blue) 0deg " + deg + "deg, var(--line) " + deg + "deg 360deg)";
     $("#score-big").textContent = r.overall;
     $("#band-chip").textContent = r.band.name;
     $("#band-blurb").textContent = r.band.blurb;
