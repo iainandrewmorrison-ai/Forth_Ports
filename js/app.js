@@ -340,7 +340,8 @@
       intake: state.intake,
       scores: Object.assign({}, state.scores),
       texts: Object.assign({}, state.texts),
-      results
+      results,
+      synced: false
     };
     const all = loadResponses();
     all.push(record);
@@ -350,6 +351,83 @@
     state = { intake: {}, scores: {}, texts: {}, stepIndex: 0 };
     renderResults(record);
     location.hash = "#results";
+    setSyncStatus("sending");
+    syncRecord(record).then((ok) => setSyncStatus(ok ? "sent" : "local"));
+  }
+
+  /* ---------------- Central submission (Google Sheet backend) ---------------- */
+
+  function buildSubmissionPayload(record) {
+    const i = record.intake;
+    const cols = [
+      { h: "Submitted", v: record.submittedAt },
+      { h: "Submission ID", v: record.id },
+      { h: "Name", v: i.name || "" },
+      { h: "Role", v: i.role || "" },
+      { h: "Email", v: i.email || "" },
+      { h: "Site / location", v: i.site || "" },
+      { h: "Team / function", v: i.team || "" },
+      { h: "Copilot access", v: labelAccess(i.copilotAccess) },
+      { h: "Used AI before", v: labelUsedAI(i.usedAI) },
+      { h: "Overall /100", v: record.results.overall },
+      { h: "Band", v: record.results.band.name }
+    ];
+    record.results.sections.forEach((s) => cols.push({ h: s.title + " /100", v: s.pct }));
+    SECTIONS.forEach((s) => s.questions.forEach((q, qi) => {
+      const key = s.id + (qi + 1);
+      cols.push({ h: key + " — " + q.theme, v: record.scores[key] || "" });
+    }));
+    OPEN_GROUPS.forEach((g) => g.questions.forEach((q, qi) => {
+      cols.push({ h: "[" + g.title + "] " + q, v: record.texts[g.key + "_" + qi] || "" });
+    }));
+    return { kind: "ep-readiness-submission", id: record.id, columns: cols };
+  }
+
+  function syncRecord(record) {
+    if (!window.EP_CONFIG || !EP_CONFIG.SUBMIT_ENDPOINT) return Promise.resolve(false);
+    return fetch(EP_CONFIG.SUBMIT_ENDPOINT, {
+      method: "POST",
+      // text/plain keeps this a "simple request" (no CORS preflight),
+      // which is what Google Apps Script web apps require.
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(buildSubmissionPayload(record)),
+      redirect: "follow"
+    })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .then((ok) => {
+        if (ok) markSynced(record.id);
+        return ok;
+      });
+  }
+
+  function markSynced(id) {
+    const all = loadResponses();
+    const rec = all.find((r) => r.id === id);
+    if (rec) { rec.synced = true; saveResponses(all); }
+    if (lastResult && lastResult.id === id) lastResult.synced = true;
+  }
+
+  function retryUnsynced() {
+    if (!window.EP_CONFIG || !EP_CONFIG.SUBMIT_ENDPOINT) return;
+    const pending = loadResponses().filter((r) => !r.synced);
+    // Sequential, fire-and-forget: quietly delivers anything that failed
+    // to send at submission time (offline, network blip).
+    pending.reduce((p, rec) => p.then(() => syncRecord(rec)), Promise.resolve());
+  }
+
+  function setSyncStatus(status) {
+    const el = $("#sync-status");
+    if (!el) return;
+    if (status === "sending") {
+      el.textContent = "Sending your responses to Enlightened People…";
+    } else if (status === "sent") {
+      el.textContent = "✓ Your responses have been sent securely to Enlightened People.";
+    } else {
+      el.textContent = window.EP_CONFIG && EP_CONFIG.SUBMIT_ENDPOINT
+        ? "Your responses are saved on this device and will be sent to Enlightened People automatically the next time you open this site online."
+        : "Your responses are saved on this device.";
+    }
   }
 
   /* ---------------- Results view ---------------- */
@@ -663,6 +741,7 @@
     const printBtn = $("#btn-print-results");
     if (printBtn) printBtn.addEventListener("click", () => window.print());
 
+    retryUnsynced();
     route();
   }
 
