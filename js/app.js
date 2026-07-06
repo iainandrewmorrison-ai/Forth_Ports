@@ -393,7 +393,12 @@
       body: JSON.stringify(buildSubmissionPayload(record)),
       redirect: "follow"
     })
-      .then((res) => res.ok)
+      .then((res) => (res.ok ? res.text() : ""))
+      .then((text) => {
+        // Only count it as delivered if the receiver's own JSON came back.
+        // A Google sign-in page (misconfigured deployment) is also HTTP 200.
+        try { return JSON.parse(text).ok === true; } catch (e) { return false; }
+      })
       .catch(() => false)
       .then((ok) => {
         if (ok) markSynced(record.id);

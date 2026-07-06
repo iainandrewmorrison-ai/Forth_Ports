@@ -28,6 +28,9 @@
 var SHEET_NAME = "Submissions";
 var ID_COLUMN = 2; // "Submission ID" — used to ignore duplicate retries
 
+// Email alert for each new submission. Set to "" to disable.
+var NOTIFY_EMAIL = "iain@enlightenedpeople.co.uk";
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -66,9 +69,41 @@ function doPost(e) {
       var v = c.v;
       return v === null || v === undefined ? "" : v;
     }));
+    notify(data, ss);
     return respond({ ok: true });
   } finally {
     lock.releaseLock();
+  }
+}
+
+// Sends a short alert email for each stored submission. Failures are
+// swallowed so a mail problem never loses the data itself.
+function notify(data, ss) {
+  if (!NOTIFY_EMAIL) return;
+  try {
+    var get = function (header) {
+      for (var i = 0; i < data.columns.length; i++) {
+        if (String(data.columns[i].h) === header) return String(data.columns[i].v || "");
+      }
+      return "";
+    };
+    var name = get("Name") || "Unnamed respondent";
+    var score = get("Overall /100");
+    MailApp.sendEmail({
+      to: NOTIFY_EMAIL,
+      subject: "New AI Readiness submission — " + name + " (" + score + "/100)",
+      body:
+        "A new AI Readiness Assessment has been submitted.\n\n" +
+        "Name: " + name + "\n" +
+        "Role: " + get("Role") + "\n" +
+        "Site / location: " + get("Site / location") + "\n" +
+        "Team / function: " + get("Team / function") + "\n" +
+        "Copilot access: " + get("Copilot access") + "\n" +
+        "Overall readiness: " + score + "/100 — " + get("Band") + "\n\n" +
+        "Full details are in the Submissions sheet:\n" + ss.getUrl()
+    });
+  } catch (e) {
+    // Never fail the submission because of a mail error.
   }
 }
 
