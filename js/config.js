@@ -9,5 +9,5 @@
    ============================================================= */
 
 window.EP_CONFIG = {
-  SUBMIT_ENDPOINT: ""
+  SUBMIT_ENDPOINT: "https://script.google.com/macros/s/AKfycbxIt8rCyx4n1ZyS2hcXbnF0wsHo18HrK0AoIbUFeiUmiBTnexNHPws7hKoyuMSXiWar/exec"
 };
